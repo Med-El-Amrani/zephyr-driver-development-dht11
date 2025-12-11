@@ -1,0 +1,32 @@
+description: DHT11 Temperature and Humidity Sensor
+
+compatible: "custom,dht11"
+
+include: [sensor-device.yaml]
+
+properties:
+  data-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      GPIO pin connected to the DHT11 data line.
+      A pull-up resistor (typically 4.7k to 10k ohms) should be connected between
+      the data line and VCC.
+  
+  read-interval:
+    type: int
+    required: false
+    default: 2000
+    minimum: 1000
+    unit: ms
+    description: |
+      Interval in milliseconds between sensor readings.
+      Default is 2 seconds.
+
+
+  power-gpios:
+    type: phandle-array
+    required: false
+    description: |
+      GPIO pin used to power the DHT11 sensor.
+      If not specified, the sensor is assumed to be always powered.    
