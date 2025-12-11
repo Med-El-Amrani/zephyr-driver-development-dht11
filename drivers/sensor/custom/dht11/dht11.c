@@ -138,6 +138,49 @@ static int dht11_start_signal(const struct gpio_dt_spec *data_gpio){
     return 0;
 }
 
+static int dht11_sample_fetch(const struct device *dev, enum sensor_channel chan){
+    const struct dht11_config *config = dev->config;
+    struct dht11_data *data = dev->data;
+    uint8_t raw_data[5]={0};
+    int ret;
+
+    /* Enforce read interval */
+    k_timepoint_t now = sys_timepoint_calc(K_NO_WAIT);
+    if(sys_timepoint_compare(now, sys_timepoint_add(data->last_read_time, K_MSEC(config->read_interval_ms))) < 0){
+        return 0; /* Not enough time has passed since last read */
+    }
+
+    ret = dht11_start_signal(&config->data_gpio);
+    if(ret < 0){
+        LOG_ERR("Failed to send start signal to DHT11");
+        return ret;
+    }
+
+    ret = dht11_read_data(&config->data_gpio, raw_data);
+    if(ret < 0){
+        LOG_ERR("Failed to read data from DHT11");
+        return ret;
+    }
+
+    /* Verify checksum */
+    if(raw_data[4] != (raw_data[0] + raw_data[1] + raw_data[2] + raw_data[3])){
+        LOG_ERR("DHT11 checksum mismatch");
+        return -EIO;
+    }
+
+    /* Parse temperature and humidity */
+    data->humidity = raw_data[0] * 10; /* DHT11 provides integer RH */
+    data->temperature = raw_data[2] * 10; /* DHT11 provides integer temperature */
+
+    data->last_read_time = now;
+
+    LOG_DBG("Temperature: %d.%d°C, Humidity: %d.%d%%",
+        data->temperature / 10, data->temperature % 10,
+        data->humidity / 10, data->humidity % 10);
+
+    return 0;
+}
+
 /* Initialize sensor */
 static int dht11_init(const struct device *dev){
     const struct dht11_config *config= dev->config;
