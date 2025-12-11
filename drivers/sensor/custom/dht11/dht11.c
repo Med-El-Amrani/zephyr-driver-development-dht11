@@ -244,5 +244,26 @@ static int dht11_channel_get(const struct device *dev, enum sensor_channel chan,
 }
 
 static const struct sensor_driver_api dht11_driver_api = {
+    .sample_fetch = dht11_sample_fetch,
     .channel_get = dht11_channel_get,
 };
+
+#define DHT11_DEFINE(inst)
+        static struct dht11_data dht11_data_##inst; \
+                                                            \
+        static const struct dht11_config dht11_config_##inst={       \
+            .data_gpio = GPIO_DT_SPEC_INST_GET(inst, data_gpios), \
+            .power_gpio = GPIO_DT_SPEC_INST_GET_OR(inst, power_gpios, {0}), \
+            .read_interval_ms = DT_INST_PROP_OR(inst, read_interval_ms, 2000), \
+        };                                                  \
+                                                            \
+        DEVICE_DT_INST_DEFINE(inst,                       \
+                    dht11_init,                       \
+                    NULL,                               \
+                    &dht11_data_##inst,                 \
+                    &dht11_config_##inst,               \
+                    POST_KERNEL,                        \
+                    CONFIG_SENSOR_INIT_PRIORITY,       \
+                    &dht11_driver_api);
+
+DT_INST_FOREACH_STATUS_OKAY(DHT11_DEFINE)
