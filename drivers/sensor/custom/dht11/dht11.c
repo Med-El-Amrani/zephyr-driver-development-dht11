@@ -10,6 +10,8 @@
 
 LOG_MODULE_REGISTER(dht11, CONFIG_SENSOR_LOG_LEVEL);
 
+#define DHT11_START_SIGNAL_US 18000
+#define DHT11_RESPONSE_TIMEOUT_US 100
 #define DHT11_BIT_TIMEOUT_US 100
 #define DHT11_DHT11_DATA_BITSDATA_BITS 40
 
@@ -74,6 +76,65 @@ static int dht11_read_data(const struct gpio_dt_spec *data_gpio, uint8_t* data){
         data[i / 8] <<= 1;
         data[i / 8] |= bit;
     }
+    return 0;
+}
+
+/* Initiate communication with DHT11 */
+static int dht11_start_signal(const struct gpio_dt_spec *data_gpio){
+    int ret;
+    uint32_t start_time;
+    int val;
+
+    /* Set data pin as output and pull low for at least 18ms */
+    ret = gpio_pin_configure_dt(data_gpio, GPIO_OUTPUT_LOW);
+    if(ret < 0){
+        return ret;     
+    }
+
+    k_busy_wait(DHT11_START_SIGNAL_US);
+
+    /* Set data pin as input and wait for sensor response */
+    ret = gpio_pin_configure_dt(data_gpio, GPIO_INPUT | GPIO_PULL_UP);
+    if(ret < 0){
+        return ret;     
+    }
+
+    /* wait for dht11 response (should pull low)*/
+    start_time = k_cyc_to_us_floor32(k_cycle_get_32());
+    do {
+        val = gpio_pin_get_dt(data_gpio);
+        if(val < 0){
+            return val;         
+        }
+        if(k_cyc_to_us_floor32(k_cycle_get_32()) - start_time > DHT11_RESPONSE_TIMEOUT_US){
+            return -ETIMEDOUT; /* Timeout waiting for response */
+        }
+    } while (val == 1);
+
+    /* whait for dht1& to pull high */
+    start_time = k_cyc_to_us_floor32(k_cycle_get_32());
+    do {
+        val = gpio_pin_get_dt(data_gpio);
+        if(val < 0){
+            return val;     
+        }
+        if(k_cyc_to_us_floor32(k_cycle_get_32()) - start_time > DHT11_RESPONSE_TIMEOUT_US){
+            return -ETIMEDOUT; /* Timeout waiting for response */
+        }
+    } while (val == 0);
+
+    /* Wait for DHT11 to pull low before data transmission */
+    start_time = k_cyc_to_us_floor32(k_cycle_get_32());
+    do {
+        val = gpio_pin_get_dt(data_gpio);
+        if(val < 0){
+            return val;
+        }
+        if((k_cyc_to_us_floor32(k_cycle_get_32()) - start_time) > DHT11_RESPONSE_TIMEOUT_US){
+            return -ETIMEDOUT; /* Timeout waiting for response */
+        }
+    } while (val == 1);
+
     return 0;
 }
 
