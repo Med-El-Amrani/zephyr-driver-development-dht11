@@ -9,7 +9,73 @@
 #include "dht11.h"
 
 LOG_MODULE_REGISTER(dht11, CONFIG_SENSOR_LOG_LEVEL);
-/* Placeholder for DHT11 driver implementation */
+
+#define DHT11_BIT_TIMEOUT_US 100
+#define DHT11_DHT11_DATA_BITSDATA_BITS 40
+
+
+/* Read a single bit from DHT11 */
+static int dht11_read_bit(const struct gpio_dt_spec *data_gpio, uint8_t *bit){
+    uint32_t start_time, high_time;
+    int val;
+
+    /* Wait for low signal */
+    start_time = k_cyc_to_us_floor32(k_cycle_get_32());
+    do {
+        val = gpio_pin_get_dt(data_gpio);
+        if(val < 0){
+            return val;
+        }
+        if(k_cyc_to_us_floor32(k_cycle_get_32()) - start_time > DHT11_BIT_TIMEOUT_US){
+            return -ETIMEDOUT; /* Timeout waiting for low signal */
+        }
+    } while (val == 1);
+
+    /* Wait for high signal */
+    start_time = k_cyc_to_us_floor32(k_cycle_get_32());
+    do {
+        val = gpio_pin_get_dt(data_gpio);
+        if(val < 0){
+            return val;
+        }
+        if(k_cyc_to_us_floor32(k_cycle_get_32()) - start_time > DHT11_BIT_TIMEOUT_US){
+            return -ETIMEDOUT; /* Timeout waiting for high signal */
+        }
+    } while (val == 0);
+
+    /* Measure duration of high signal */
+    start_time = k_cyc_to_us_floor32(k_cycle_get_32());
+    do {
+        val = gpio_pin_get_dt(data_gpio);
+        if(val < 0){
+            return val;     
+        }
+        high_time = k_cyc_to_us_floor32(k_cycle_get_32()) - start_time;
+        if(high_time > DHT11_BIT_TIMEOUT_US){
+            return -ETIMEDOUT; /* Timeout waiting for end of high signal */
+        }
+    } while (val == 1);   
+
+    /* Bit value depends on high signal duration (26-28us = 0, ~70us = 1)*/
+    *bit = (high_time > 40) ? 1 : 0;
+    return 0;
+}
+
+/* Read 40 bits of data from DHT11 */
+static int dht11_read_data(const struct gpio_dt_spec *data_gpio, uint8_t* data){
+    int ret;
+    uint8_t bit;
+
+    for(int i = 0; i < DHT11_DATA_BITS; i++){
+        ret = dht11_read_bit(data_gpio, &bit);
+        if(ret < 0){
+            return ret;
+        }
+        data[i / 8] <<= 1;
+        data[i / 8] |= bit;
+    }
+    return 0;
+}
 
 /* Initialize sensor */
 static int dht11_init(const struct device *dev){
